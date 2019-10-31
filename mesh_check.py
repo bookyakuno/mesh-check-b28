@@ -1,10 +1,15 @@
 '''
 mesh_check.py
+Draw ngons and triangles with bgu.
+The GPU edition has been updated to Blender2.8 based on the Pistiwique version.
+Copyright (C) 2019 Bookyakuno
+Created by Bookyakuno
+↑
 Draw ngons and triangles with bgl - using bmesh in edit mode
 Copyright (C) 2016 Pistiwique
 Created by Pistiwique
-
-The code is based on 3dview_border_lines_bmesh_edition.py
+↑
+BGL Edition is based on 3dview_border_lines_bmesh_edition.py
 Copyright (C) 2015 Quentin Wenger
 
 This program is free software: you can redistribute it and/or modify
@@ -20,19 +25,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
 import bpy
-# from gpu import *
 import gpu
+import bgl
+from bgl import *
 from gpu_extras.batch import batch_for_shader
 
-import numpy as np
 from random import random
 from gpu_extras.batch import batch_for_shader
 
-import bgl
-from bgl import *
-# from bgl import glBegin, glEnd, glEnable, glDisable, glColor3f, glColor4f, \
-#     glLineWidth, glPointSize, glVertex3f, GL_LINES, GL_DEPTH_TEST, GL_BLEND, \
-#     GL_POLYGON, GL_POINTS
+
 from mathutils.geometry import tessellate_polygon as tessellate
 import bmesh
 from mathutils import Vector
@@ -67,10 +68,28 @@ def draw_poles(color, point_size, datas):
 	glEnd()
 
 
+# 追加
+shader3D = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+
+def draw_batch_face_triangles( batch , color = (1,0,0,0.5) ) :
+	bgl.glEnable(bgl.GL_BLEND)
+	bgl.glEnable(bgl.GL_DEPTH_TEST)
+	bgl.glDepthMask(bgl.GL_FALSE)
+	bgl.glDepthFunc( bgl.GL_LEQUAL )
+	bgl.glEnable(bgl.GL_POLYGON_OFFSET_LINE)
+	bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
+	bgl.glPolygonOffset(1.0, 1.0)
+
+	shader3D.bind()
+	shader3D.uniform_float("color", color )
+	batch.draw(shader3D)
+	bgl.glDisable(bgl.GL_BLEND)
+
+
 def mesh_check_draw_callback():
 	obj = bpy.context.object
 
-	shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+	# shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 
 
 
@@ -148,90 +167,56 @@ def mesh_check_draw_callback():
 				for face in bm.faces:
 					if not face.hide:
 						verts_count = len([verts for verts in face.verts])
+						tris = []
 						if prefs.display_tris and verts_count == 3:
-							faces = []
 							for vert in face.verts:
-								vert_face = matrix_world @ vert.co
-								faces.append((vert_face[
-												  0] + face.normal.x * get_offset(
-									obj),
-											  vert_face[
-												  1] + face.normal.y * get_offset(
-												  obj),
-											  vert_face[
-												  2] + face.normal.z * get_offset(
-												  obj))
-											 )
+								tris.append(matrix_world @ vert.co) # 頂点のグローバル位置を保存？
+
+						batch3 = batch_for_shader( shader3D , 'TRIS' , {"pos": tris } )
+						shader3D.uniform_float("color", prefs.tri_color)
+						batch3.draw(shader3D)
 
 
+							# glEnable(GL_BLEND)
+							# glBegin(GL_POLYGON)
+							# draw_poly(faces)
+							# glEnd()
 
-							# coords = ((vert_face[0] + face.normal.x * get_offset(obj)),(vert_face[1] + face.normal.x * get_offset(obj)),
-							# 	# (-1, -2, -1), (+1, -1, -1),
-							# 	(-1, +1, -1), (+1, +1, -1),
-							# 	(-1, -1, +1), (+1, -1, +1),
-							# 	(-1, +1, +1), (+1, +1, +1))
-							#
-							# indices = (
-							# 	(4, 1), (0, 2), (1, 3), (2, 3),
-							# 	(4, 5), (4, 6), (5, 7), (6, 7),
-							# 	(0, 4), (1, 5), (2, 6), (3, 7))
-							#
-							# batch = batch_for_shader(shader, 'LINES', {"pos": coords}, indices=indices)
-							# shader.bind()
-							# shader.uniform_float("color",(1, 0, 0, 1))
-							# batch.draw(shader)
-
-
-
-							# mesh = bpy.context.active_object.data
-							# mesh.calc_loop_triangles()
-							#
-							# vertices = np.empty((len(mesh.vertices), 3), 'f')
-							# indices = np.empty((len(mesh.loop_triangles), 3), 'i')
-							#
-							# mesh.vertices.foreach_get(
-							# 	"co", np.reshape(vertices, len(mesh.vertices) * 3))
-							# mesh.loop_triangles.foreach_get(
-							# 	"vertices", np.reshape(indices, len(mesh.loop_triangles) * 3))
-							#
-							# vertex_colors = [(1, 0, 0, 1) for _ in range(len(mesh.vertices))]
-							# # vertex_colors = [(random(), random(), random(), 1) for _ in range(len(mesh.vertices))]
-							#
-							# shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
-							# batch = batch_for_shader( shader, 'TRIS', {"pos": vertices, "color": vertex_colors}, indices=indices, )
-							# batch.draw(shader)
-
-							glColor4f(*prefs.tri_color)
-							glEnable(GL_BLEND)
-							glBegin(GL_POLYGON)
-							draw_poly(faces)
-							glEnd()
-
-							for edge in face.edges:
-								if edge.is_valid:
-									edges = []
-									for vert in edge.verts:
-										vert_edge = matrix_world @ vert.co
-										edges.append((vert_edge[
-														  0] + face.normal.x * get_offset(
-											obj),
-													  vert_edge[
-														  1] + face.normal.y * get_offset(
-														  obj),
-													  vert_edge[
-														  2] + face.normal.z * get_offset(
-														  obj))
-													 )
-									glColor3f(*prefs.tri_color[:3])
-									glBegin(GL_LINES)
-									draw_poly(edges)
-									glEnd()
+							# for edge in face.edges:
+							# 	if edge.is_valid:
+							# 		edges = []
+							# 		for vert in edge.verts:
+							# 			vert_edge = matrix_world @ vert.co
+							# 			edges.append((vert_edge[
+							# 							  0] + face.normal.x * get_offset(
+							# 				obj),
+							# 						  vert_edge[
+							# 							  1] + face.normal.y * get_offset(
+							# 							  obj),
+							# 						  vert_edge[
+							# 							  2] + face.normal.z * get_offset(
+							# 							  obj))
+							# 						 )
+							# 		glColor3f(*prefs.tri_color[:3])
+							# 		glBegin(GL_LINES)
+							# 		draw_poly(edges)
+							# 		glEnd()
 
 						if prefs.display_ngons and verts_count > 4:
 							new_faces = []
 							faces = []
 							coords = [v.co for v in face.verts]
 							indices = [v.index for v in face.verts]
+
+							ngons = []
+							for vert in face.verts:
+								ngons.append(matrix_world @ vert.co) # 頂点のグローバル位置を保存？
+
+							batch5 = batch_for_shader( shader3D , 'TRIS' , {"pos": ngons } )
+							shader3D.bind()
+							shader3D.uniform_float("color", prefs.ngons_color)
+							batch5.draw(shader3D)
+
 							for pol in tessellate([coords]):
 								new_faces.append([indices[i] for i in pol])
 
@@ -247,12 +232,12 @@ def mesh_check_draw_callback():
 												   obj))
 											  for i in f])
 
-							for f in faces:
-								glColor4f(*prefs.ngons_color)
-								glEnable(GL_BLEND)
-								glBegin(GL_POLYGON)
-								draw_poly(f)
-								glEnd()
+							# for f in faces:
+								# glColor4f(*prefs.ngons_color)
+								# glEnable(GL_BLEND)
+								# glBegin(GL_POLYGON)
+								# draw_poly(f)
+								# glEnd()
 
 							for edge in face.edges:
 								if edge.is_valid:
@@ -269,13 +254,19 @@ def mesh_check_draw_callback():
 														  2] + face.normal.z * get_offset(
 														  obj))
 													 )
-									glColor3f(*prefs.ngons_color[:3])
-									glBegin(GL_LINES)
-									draw_poly(edges)
-									glEnd()
+									# glColor3f(*prefs.ngons_color[:3])
+									# glBegin(GL_LINES)
+									# draw_poly(edges)
+									# glEnd()
+
+
+
+
+
+
 
 				glDisable(GL_BLEND)
-				glColor4f(0.0, 0.0, 0.0, 1.0)
+				# glColor4f(0.0, 0.0, 0.0, 1.0)
 
 def updateBGLData(self, context):
 	if self.mesh_check_use:
@@ -327,39 +318,49 @@ class MeshCheckCollectionGroup(bpy.types.PropertyGroup):
 			)
 
 
-def displayMeshCheckPanel(self, context):
-	layout = self.layout
-	icons = load_icons()
-	tris = icons.get("triangles")
-	ngons = icons.get("ngons")
+# def displayMeshCheckPanel(self, context):
 
-	mesh_check = context.window_manager.mesh_check
-	key = __package__.split(".")[0]
-	prefs = bpy.context.preferences.addons[key].preferences
+class MESHCK_PT_Panel(bpy.types.Panel):
+	bl_space_type = 'VIEW_3D'
+	bl_region_type = 'UI'
+	bl_category = 'Tools'
+	bl_label = "Mesh Check"
+	bl_options = {'DEFAULT_CLOSED'}
 
-	row = layout.row(align=True)
-	row.prop(mesh_check, 'mesh_check_use')
-	if mesh_check.mesh_check_use:
-		row.prop(mesh_check, 'display_options', text="")
-	split = layout.split(factor=0.1)
-	split.separator()
-	split2 = split.split()
-	row = split2.row(align=True)
-	row.operator('object.face_type_select', text="Tris",
-				 icon_value=tris.icon_id).face_type = 'tris'
-	row.operator('object.face_type_select', text="Ngons",
-				 icon_value=ngons.icon_id).face_type = 'ngons'
 
-	if mesh_check.mesh_check_use:
-		options = ['display_ngons', 'display_tris',
-				   'display_e_pole', 'display_n_pole',
-				   'display_more_pole', 'display_isolated_verts',
-				   'display_non_manifold',
-				   ]
-		if mesh_check.display_options:
-			for attr in options:
-				split = layout.split(factor=0.1)
-				split.separator()
-				split2 = split.split()
-				row = split2.row(align=True)
-				row.prop(prefs, attr)
+	def draw(self, context):
+		layout = self.layout
+		icons = load_icons()
+		tris = icons.get("triangles")
+		ngons = icons.get("ngons")
+
+		mesh_check = context.window_manager.mesh_check
+		key = __package__.split(".")[0]
+		prefs = bpy.context.preferences.addons[key].preferences
+
+		row = layout.row(align=True)
+		row.prop(mesh_check, 'mesh_check_use')
+		if mesh_check.mesh_check_use:
+			row.prop(mesh_check, 'display_options', text="")
+		split = layout.split(factor=0.1)
+		split.separator()
+		split2 = split.split()
+		row = split2.row(align=True)
+		row.operator('object.face_type_select', text="Tris",
+					 icon_value=tris.icon_id).face_type = 'tris'
+		row.operator('object.face_type_select', text="Ngons",
+					 icon_value=ngons.icon_id).face_type = 'ngons'
+
+		if mesh_check.mesh_check_use:
+			options = ['display_ngons', 'display_tris',
+					   'display_e_pole', 'display_n_pole',
+					   'display_more_pole', 'display_isolated_verts',
+					   'display_non_manifold',
+					   ]
+			if mesh_check.display_options:
+				for attr in options:
+					split = layout.split(factor=0.1)
+					split.separator()
+					split2 = split.split()
+					row = split2.row(align=True)
+					row.prop(prefs, attr)
